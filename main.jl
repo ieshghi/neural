@@ -1,7 +1,7 @@
 module learndigit
 
 using LinearAlgebra
-using IDX
+include("idx.jl")
 
 function sigmoid(x)
 	return 1/(1+exp(-x))
@@ -10,7 +10,7 @@ function dsigmoid(x)
 	return exp(-x)/(1+exp(-x))^2
 end
 
-function init(nin,nout)
+function init()
 	nin = 28*28; #Size of the input, in this case a 28*28 image
 	nhid = [15]; #number of hidden layer nodes for each layer
 	nout = 10; #number of output layer nodes
@@ -27,19 +27,20 @@ end
 
 function network(input,w,b)
 	input = input[:]; #shape of input is (nin,)
-	
+	out = 0;
+
 	for i = 1:length(w)
-		out = sigmoid.(dot(input,w[i])+b[i]);
+		out = sigmoid.(w[i]*input+b[i]);
 		input = out;		
 	end
 
-	return dot((out .==maximum(out)	),[0:9]),out
+	return out
 end
 
 function loadinputs()
-	train_dat = load("data/train-images-idx3-ubyte");
+	train_dat = IDX.load("data/train-images-idx3-ubyte");
 	train_dat = train_dat[3];
-	labs = load("data/train-labels-idx1-ubyte");
+	labs = IDX.load("data/train-labels-idx1-ubyte");
 	labs = labs[3];
 	return train_dat,labs
 end
@@ -49,7 +50,9 @@ function training(eps)
 	w,b = init();
 	frac = 0.1;
 	eta = 0.01;
-	while cost(dat,labs,w,b)>eps
+	epoch = 1;
+	while cost(dat,labs,w,b,frac)>eps
+		println("Epoch: ",epoch)
 		w,b = update(dat,labs,w,b,eta,frac);
 	end
 	return w,b
@@ -83,18 +86,18 @@ function cost(dat,labs,w,b,frac)
 		c = c+(guess-sublabs[i])^2;
 	end
 
-	return c/length(sublabs)
+	return c./length(sublabs)
 end
 
 function stoch_samp(a,b,frac)
-	n = length(a);
+	n = length(a[1,1,:]);
 	if frac == 0
 		ind = floor(rand()*n);
-		aout = a[ind];
+		aout = a[:,:,ind];
 		bout = b[ind];
 	else
 		ind = rand(n).<frac;
-		aout = a[ind];
+		aout = a[:,:,ind];
 		bout = b[ind];
 	end
 	return aout,bout
@@ -112,7 +115,7 @@ function backprop(x,y,w,b)
 	acthist = [x];
 	zs = Matrix{Array{Float64}}(undef,length(w),1);
 	for i = 1:length(w)
-		z = dot(w[i],act)+b;
+		z = w[i]*act+b;
 		zs[i] = z;
 		act = sigmoid.(z);
 		acthist = [acthist,act];
@@ -120,14 +123,14 @@ function backprop(x,y,w,b)
 	
 	delta = (acts[end]-y)*dsigmoid.(zs[end]);
 	nb[end] = delta;
-	nw[end] = dot(delta,acts[end-1]');
+	nw[end] = delta*(acts[end-1]');
 
 	for j = 1:length(w)
 		z = zs[end-j];
 		spz = dsigmoid.(z);
-		delta = dot(w[end-j+1]',delta)*spz;
+		delta = ((w[end-j+1]')*delta)*spz;
 		nb[end-j] = delta;
-		nw[end-j] = dot(delta,acts[end-j-1]);
+		nw[end-j] = delta*acts[end-j-1];
 	end
 	return nw,nb
 end
