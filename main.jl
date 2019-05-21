@@ -6,28 +6,34 @@ using IDX
 function sigmoid(x)
 	return 1/(1+exp(-x))
 end
+function dsigmoid(x)
+	return exp(-x)/(1+exp(-x))^2
+end
+
+function init(nin,nout)
+	nin = 28*28; #Size of the input, in this case a 28*28 image
+	nhid = [15]; #number of hidden layer nodes for each layer
+	nout = 10; #number of output layer nodes
+	w = Matrix{Array{Float64}}(undef,length(nhid),1);
+	b = Matrix{Array{Float64}}(undef,length(nhid),1);
+	s = [nin;nhid;nout];
+	for i = 1:length(nhid)
+		j = i+1;
+		w[i] = rand(s[j],s[i]);
+		b[i] = rand(s[j]);
+	end	
+	return w,b
+end
 
 function network(input,w,b)
 	input = input[:]; #shape of input is (nin,)
-
-	nhid = 15; #number of hidden layer nodes
-	nout = 10; #number of output layer nodes
-
-	w1,w2,b1,b2 = reshape_stuff(w,b,length(input),nhid,nout);	
-
-	midlayer = sigmoid.(dot(input,w1)+b1); 
-	out =  sigmoid.(dot(midlayer,w2)+b2);
+	
+	for i = 1:length(w)
+		out = sigmoid.(dot(input,w[i])+b[i]);
+		input = out;		
+	end
 
 	return dot((out .==maximum(out)	),[0:9]),out
-end
-
-function reshape_stuff(w,b,nin,nhid,nout)
-	w1 = reshape(w[1:(nin*nhid)],(nhid,nin));
-	w2 = reshape(w[(nin*nhid+1):end],(nout,nhid));
-	b1 = b[1:(nhid)];
-	b2 = b[(nhid+1):end];
-	
-	return w1,w2,b1,b2
 end
 
 function loadinputs()
@@ -39,35 +45,91 @@ function loadinputs()
 end
 
 function training(eps)
-	nhid = 15;
-	nout = 10;
-
-	dat,labs = loadinputs()
-	while 
-
+	dat,labs = loadinputs();
+	w,b = init();
+	frac = 0.1;
+	eta = 0.01;
+	while cost(dat,labs,w,b)>eps
+		w,b = update(dat,labs,w,b,eta,frac);
+	end
+	return w,b
 end
 
-function gradc(dat,labs,w,b)
+function update(dat,labs,w,b,eta,frac)
+	subdat,sublabs = stoch_samp(dat,labs,frac);
+	gw = Matrix{Array{Float64}}(undef,length(w),1);
+	gb = Matrix{Array{Float64}}(undef,length(w),1);
 
+	for i = 1:size(subdat,3)
+		dw,db = backprop(subdat[:,:,i],sublabs[i]);
+		for j = 1:length(w)
+			gw[j] = gw[j] + dw[j];
+			gb[j] = gb[j] + db[j];
+		end
+	end
+	
+	for i = 1:length(w)
+		w[i] = w[i] - eta.*gw[i]./length(sublabs);
+		b[i] = b[i] - eta.*gb[i]./length(sublabs);
+	end
+	return w,b
 end
 
-function cost(dat,labs,w,b)
+function cost(dat,labs,w,b,frac)
 	c = 0;
-	nout = 10;
-	subdat,sublabs = stoch_samp(dat,labs,0.1);
+	subdat,sublabs = stoch_samp(dat,labs,frac);
 	for i = 1:size(subdat,3)
 		guess = network(subdat[:,:,i],w,b);
 		c = c+(guess-sublabs[i])^2;
 	end
 
-	return sqrt(c/length(labs))
+	return c/length(sublabs)
 end
 
 function stoch_samp(a,b,frac)
-	
-
+	n = length(a);
+	if frac == 0
+		ind = floor(rand()*n);
+		aout = a[ind];
+		bout = b[ind];
+	else
+		ind = rand(n).<frac;
+		aout = a[ind];
+		bout = b[ind];
+	end
+	return aout,bout
 end
 
+function backprop(x,y,w,b)
+	nw = Matrix{Array{Float64}}(undef,length(w),1);
+	nb = Matrix{Array{Float64}}(undef,length(w),1);
+	for i = 1:length(w)
+		nw[i] = zeros(size(w[i]));
+		nb[i] = zeros(size(b[i]));
+	end
 
+	act = x;
+	acthist = [x];
+	zs = Matrix{Array{Float64}}(undef,length(w),1);
+	for i = 1:length(w)
+		z = dot(w[i],act)+b;
+		zs[i] = z;
+		act = sigmoid.(z);
+		acthist = [acthist,act];
+	end
+	
+	delta = (acts[end]-y)*dsigmoid.(zs[end]);
+	nb[end] = delta;
+	nw[end] = dot(delta,acts[end-1]');
+
+	for j = 1:length(w)
+		z = zs[end-j];
+		spz = dsigmoid.(z);
+		delta = dot(w[end-j+1]',delta)*spz;
+		nb[end-j] = delta;
+		nw[end-j] = dot(delta,acts[end-j-1]);
+	end
+	return nw,nb
+end
 
 end
