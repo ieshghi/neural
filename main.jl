@@ -1,18 +1,20 @@
 module learndigit
-
+using Statistics
 using LinearAlgebra
 include("idx.jl")
 
 function sigmoid(x)
 	return 1/(1+exp(-x))
+	#return x*(1+sign(x))/2
 end
 function dsigmoid(x)
-	return exp(-x)/(1+exp(-x))^2
+	return sigmoid(x)*(1-sigmoid(x))
+	#return (1+sign(x))/2
 end
 
 function init()
 	nin = 28*28; #Size of the input, in this case a 28*28 image
-	nhid = [15]; #number of hidden layer nodes for each layer
+	nhid = []; #number of hidden layer nodes for each layer
 	nout = 10; #number of output layer nodes
 	w = Matrix{Array{Float64}}(undef,1+length(nhid),1);
 	b = Matrix{Array{Float64}}(undef,1+length(nhid),1);
@@ -48,7 +50,7 @@ function loadinputs()
 	for i = 1:length(labs)
 		d[i] = zeros(28*28);
 		q = train_dat[:,:,i];
-		d[i] = q[:];
+		d[i] = (q[:]-mean(q)*ones(size(q[:])))./maximum(q);
 		l[i] = zeros(10);
 		l[i][Int(labs[i])+1]=1;
 	end
@@ -59,7 +61,7 @@ end
 function training(epochs)
 	dat,labs = loadinputs();
 	w,b = init();
-	frac = 0.1;
+	frac = 0.001;
 	eta = 3;
 	for epoch = 1:epochs
 		err = cost(dat,labs,w,b,frac);
@@ -148,6 +150,38 @@ function backprop(x,y,w,b)
 		nw[end-j] = delta.*acthist[end-j-1]';
 	end
 	return nw,nb
+end
+
+function loadtest()
+	train_dat = IDX.load("data/t10k-images-idx3-ubyte");
+	train_dat = train_dat[3];
+	labs = IDX.load("data/t10k-labels-idx1-ubyte");
+	labs = labs[3];
+
+	l = Matrix{Array{Float64}}(undef,length(labs),1);
+	d = Matrix{Array{Float64}}(undef,length(labs),1);
+	for i = 1:length(labs)
+		d[i] = zeros(28*28);
+		q = train_dat[:,:,i];
+		d[i] = (q-mean(q)*ones(size(q)))./maximum(q);
+		l[i] = zeros(10);
+		l[i][Int(labs[i])+1]=1;
+	end
+
+	return d,l
+end
+
+function test(w,b)
+	dat,labs = loadtest();
+	corr = zeros(length(dat));
+	for i = 1:length(dat)
+		pred = network(dat[i],w,b);
+		pred = findall(x->x==maximum(pred),pred)[1]-1;
+		tru = findall(x->x==maximum(labs[i]),labs[i])[1]-1;
+		corr[i] = 1*(pred==tru);
+	end
+	frac = sum(corr)/length(corr);
+	println("Fraction: ",frac);
 end
 
 end
